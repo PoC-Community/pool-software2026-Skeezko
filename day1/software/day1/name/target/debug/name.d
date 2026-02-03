@@ -1,0 +1,1 @@
+/home/shami/Epitech/Poc-Software/day1/software/day1/name/target/debug/name: /home/shami/Epitech/Poc-Software/day1/software/day1/name/src/main.rs /home/shami/Epitech/Poc-Software/day1/software/day1/name/src/what_is_your_name.rs

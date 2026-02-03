@@ -1,0 +1,1 @@
+/home/shami/Epitech/Poc-Software/day1/software/day1/hello_rust/target/debug/hello_rust: /home/shami/Epitech/Poc-Software/day1/software/day1/hello_rust/src/hello_world.rs /home/shami/Epitech/Poc-Software/day1/software/day1/hello_rust/src/main.rs

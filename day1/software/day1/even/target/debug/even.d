@@ -1,0 +1,1 @@
+/home/shami/Epitech/Poc-Software/day1/software/day1/even/target/debug/even: /home/shami/Epitech/Poc-Software/day1/software/day1/even/src/get_even_numbers.rs /home/shami/Epitech/Poc-Software/day1/software/day1/even/src/main.rs
