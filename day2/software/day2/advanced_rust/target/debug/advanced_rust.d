@@ -1,1 +1,0 @@
-/home/shami/Epitech/Poc-Software/day2/software/day2/advanced_rust/target/debug/advanced_rust: /home/shami/Epitech/Poc-Software/day2/software/day2/advanced_rust/src/file_manager.rs /home/shami/Epitech/Poc-Software/day2/software/day2/advanced_rust/src/main.rs
