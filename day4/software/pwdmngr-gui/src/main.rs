@@ -4,17 +4,16 @@ mod storage;
 use crate::crypto::CryptoManager;
 use crate::models::{PasswordEntry, PasswordStore};
 use crate::storage::Storage;
-use iced::{Alignment, clipboard};
 use iced::widget::button;
 use iced::widget::pick_list;
 use iced::widget::row;
+use iced::widget::scrollable;
 use iced::widget::text;
 use iced::widget::text_input;
 use iced::widget::{column, container};
+use iced::{Alignment, clipboard};
 use iced::{Element, Task, Theme};
 use iced::{Fill, Font};
-use iced::widget::scrollable;
-
 
 struct PasswordManagerApp {
     master_password_input: String,
@@ -28,7 +27,7 @@ struct PasswordManagerApp {
     new_service: String,
     new_user: String,
     new_password: String,
-    password_length: u8
+    password_length: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -66,7 +65,7 @@ impl Default for PasswordManagerApp {
             new_service: String::new(),
             new_user: String::new(),
             new_password: String::new(),
-            password_length: 16
+            password_length: 16,
         }
     }
 }
@@ -112,7 +111,7 @@ impl PasswordManagerApp {
             Message::NewServiceChanged(s) => self.new_service = s,
             Message::NewUserChanged(u) => self.new_user = u,
             Message::NewPasswordChanged(p) => self.new_password = p,
-            
+
             Message::GenerateNewPassword(len) => {
                 if let Some(storage) = &self.storage {
                     self.new_password = storage.generate_password(len);
@@ -134,7 +133,7 @@ impl PasswordManagerApp {
                 if let Some(storage) = &self.storage {
                     let _ = storage.save(self.store.clone());
                 }
-                
+
                 self.new_service.clear();
                 self.new_user.clear();
                 self.new_password.clear();
@@ -236,7 +235,6 @@ impl PasswordManagerApp {
     }
 
     fn view_dashboard(&self) -> Element<'_, Message> {
-    
         let sidebar = container(
             column![
                 text("VAULT").size(24).font(Font::MONOSPACE),
@@ -245,41 +243,66 @@ impl PasswordManagerApp {
                     .padding(12),
                 scrollable(
                     column(
-                        self.store.entries.iter().enumerate()
-                            .filter(|(_, e)| e.service.to_lowercase().contains(&self.search_query.to_lowercase()))
+                        self.store
+                            .entries
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, e)| e
+                                .service
+                                .to_lowercase()
+                                .contains(&self.search_query.to_lowercase()))
                             .map(|(i, e)| {
                                 button(text(&e.service))
                                     .on_press(Message::SelectService(i))
                                     .width(Fill)
                                     .padding(10)
                                     .into()
-                            }).collect::<Vec<_>>()
-                    ).spacing(8)
-                ).height(Fill)
-            ].spacing(20)
+                            })
+                            .collect::<Vec<_>>()
+                    )
+                    .spacing(8)
+                )
+                .height(Fill)
+            ]
+            .spacing(20),
         )
         .width(280)
         .padding(20);
 
-        let details_area = container(
-        if let Some(id) = self.selected_service {
+        let details_area = container(if let Some(id) = self.selected_service {
             let e = &self.store.entries[id];
             column![
                 text(&e.service).size(50).font(Font::MONOSPACE),
                 column![
                     text("Username").size(16),
                     text(&e.username).size(24).font(Font::MONOSPACE),
-                ].spacing(5).align_x(Alignment::Center),
+                ]
+                .spacing(5)
+                .align_x(Alignment::Center),
                 column![
                     text("Password").size(16),
                     row![
-                        text(if self.is_password_visible { &e.password } else { "********" })
-                            .size(24).font(Font::MONOSPACE),
-                        button(text(if self.is_password_visible { "Hide" } else { "Show" }))
-                            .on_press(Message::ToggleVisibility).style(button::secondary),
+                        text(if self.is_password_visible {
+                            &e.password
+                        } else {
+                            "********"
+                        })
+                        .size(24)
+                        .font(Font::MONOSPACE),
+                        button(text(if self.is_password_visible {
+                            "Hide"
+                        } else {
+                            "Show"
+                        }))
+                        .on_press(Message::ToggleVisibility)
+                        .style(button::secondary),
                         button("Copy").on_press(Message::CopyPassword(e.password.clone())),
-                    ].spacing(15).align_y(Alignment::Center),
-                ].spacing(5).align_x(Alignment::Center),
+                    ]
+                    .spacing(15)
+                    .align_y(Alignment::Center),
+                ]
+                .spacing(5)
+                .align_x(Alignment::Center),
                 button("Delete Service")
                     .on_press(Message::DeleteService(id))
                     .style(button::danger)
@@ -289,41 +312,61 @@ impl PasswordManagerApp {
             .align_x(Alignment::Center)
         } else {
             column![text("Select a service to view details").size(32)]
-        }
-    )
-    .width(Fill)
-    .height(Fill)
-    .center_x(Fill)
-    .center_y(Fill);
+        })
+        .width(Fill)
+        .height(Fill)
+        .center_x(Fill)
+        .center_y(Fill);
 
         let add_form = container(
-        column![
-            text(if self.selected_service.is_some() { "EDIT ENTRY" } else { "NEW ENTRY" }).size(14),
-            row![
-                text_input("Service", &self.new_service).on_input(Message::NewServiceChanged),
-                text_input("Username", &self.new_user).on_input(Message::NewUserChanged),
-            ].spacing(10),
-            row![
-                text_input("Password", &self.new_password).on_input(Message::NewPasswordChanged),
+            column![
+                text(if self.selected_service.is_some() {
+                    "EDIT ENTRY"
+                } else {
+                    "NEW ENTRY"
+                })
+                .size(14),
                 row![
-                    iced::widget::slider(8..=64, self.password_length, Message::LengthChanged).width(150),
-                    text(format!("{}", self.password_length)).size(18).width(30),
-                ].spacing(10).align_y(Alignment::Center),
-                button("Gen").on_press(Message::GenerateNewPassword(self.password_length as usize)),
-            ].spacing(10).align_y(Alignment::Center),
-            row![
-                button(if self.selected_service.is_some() { "Update" } else { "Save" })
-                    .on_press(Message::SaveEntry).width(Fill),
-                button("Cancel").on_press(Message::CancelEdit).style(button::secondary),
-            ].spacing(10)
-        ].spacing(15)
-    )
-    .padding(20);
+                    text_input("Service", &self.new_service).on_input(Message::NewServiceChanged),
+                    text_input("Username", &self.new_user).on_input(Message::NewUserChanged),
+                ]
+                .spacing(10),
+                row![
+                    text_input("Password", &self.new_password)
+                        .on_input(Message::NewPasswordChanged),
+                    row![
+                        iced::widget::slider(8..=64, self.password_length, Message::LengthChanged)
+                            .width(150),
+                        text(format!("{}", self.password_length)).size(18).width(30),
+                    ]
+                    .spacing(10)
+                    .align_y(Alignment::Center),
+                    button("Gen")
+                        .on_press(Message::GenerateNewPassword(self.password_length as usize)),
+                ]
+                .spacing(10)
+                .align_y(Alignment::Center),
+                row![
+                    button(if self.selected_service.is_some() {
+                        "Update"
+                    } else {
+                        "Save"
+                    })
+                    .on_press(Message::SaveEntry)
+                    .width(Fill),
+                    button("Cancel")
+                        .on_press(Message::CancelEdit)
+                        .style(button::secondary),
+                ]
+                .spacing(10)
+            ]
+            .spacing(15),
+        )
+        .padding(20);
 
         row![sidebar, column![details_area, add_form]].into()
     }
 }
-
 
 fn main() -> iced::Result {
     iced::application(
