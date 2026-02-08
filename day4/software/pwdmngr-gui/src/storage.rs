@@ -8,7 +8,7 @@ pub struct Storage {
     pub crypto: CryptoManager,
 }
 
-const STORAGE_FILE_NAME: &str = "password.encrypted";
+const STORAGE_FILE_NAME: &str = "credentials.encrypted";
 
 impl Storage {
     pub fn load(&self) -> Result<PasswordStore, String> {

@@ -4,18 +4,17 @@ mod storage;
 use crate::crypto::CryptoManager;
 use crate::models::{PasswordEntry, PasswordStore};
 use crate::storage::Storage;
-use iced::Alignment;
+use iced::{Alignment, clipboard};
 use iced::widget::button;
-use iced::widget::canvas::fill;
-use iced::widget::operation::focus;
 use iced::widget::pick_list;
 use iced::widget::row;
 use iced::widget::text;
-use iced::widget::{TextInput, text_input};
+use iced::widget::text_input;
 use iced::widget::{column, container};
-use iced::{Element, Task, Theme, message};
+use iced::{Element, Task, Theme};
 use iced::{Fill, Font};
-use std::io::{self, Write};
+use iced::widget::scrollable;
+
 
 struct PasswordManagerApp {
     master_password_input: String,
@@ -26,6 +25,10 @@ struct PasswordManagerApp {
     selected_service: Option<usize>,
     is_password_visible: bool,
     theme: Theme,
+    new_service: String,
+    new_user: String,
+    new_password: String,
+    password_length: u8
 }
 
 #[derive(Debug, Clone)]
@@ -36,10 +39,15 @@ enum Message {
     SelectService(usize),
     SaveEntry,
     DeleteService(usize),
-    GenerateNewPassword,
+    GenerateNewPassword(usize),
     ToggleVisibility,
     CopyPassword(String),
     ThemeChanged(Theme),
+    NewServiceChanged(String),
+    NewUserChanged(String),
+    NewPasswordChanged(String),
+    CancelEdit,
+    LengthChanged(u8),
 }
 
 impl Default for PasswordManagerApp {
@@ -55,12 +63,16 @@ impl Default for PasswordManagerApp {
             selected_service: None,
             is_password_visible: false,
             theme: Theme::Nightfly,
+            new_service: String::new(),
+            new_user: String::new(),
+            new_password: String::new(),
+            password_length: 16
         }
     }
 }
 
 impl PasswordManagerApp {
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ThemeChanged(theme) => {
                 self.theme = theme;
@@ -73,28 +85,85 @@ impl PasswordManagerApp {
             }
             Message::LoginPressed => {
                 let crypto = CryptoManager::new(&self.master_password_input);
-
                 match crypto {
                     Ok(c) => {
                         let storage = Storage { crypto: c };
                         match storage.load() {
                             Ok(s) => {
                                 self.storage = Some(storage);
-                                self.store = s
+                                self.store = s;
                             }
                             Err(e) => self.error_message = Some(e),
                         }
                     }
-                    Err(e) => {
-                        self.error_message = Some(e);
-                    }
+                    Err(e) => self.error_message = Some(e),
                 }
             }
-            _ => {}
+            Message::SelectService(id) => {
+                self.selected_service = Some(id);
+                let entry = &self.store.entries[id];
+                self.new_service = entry.service.clone();
+                self.new_user = entry.username.clone();
+                self.new_password = entry.password.clone();
+            }
+            Message::SearchChanged(search) => {
+                self.search_query = search;
+            }
+            Message::NewServiceChanged(s) => self.new_service = s,
+            Message::NewUserChanged(u) => self.new_user = u,
+            Message::NewPasswordChanged(p) => self.new_password = p,
+            
+            Message::GenerateNewPassword(len) => {
+                if let Some(storage) = &self.storage {
+                    self.new_password = storage.generate_password(len);
+                }
+            }
+            Message::SaveEntry => {
+                let new_entry = PasswordEntry {
+                    service: self.new_service.clone(),
+                    username: self.new_user.clone(),
+                    password: self.new_password.clone(),
+                };
+
+                if let Some(id) = self.selected_service {
+                    self.store.entries[id] = new_entry;
+                } else {
+                    self.store.entries.push(new_entry);
+                }
+
+                if let Some(storage) = &self.storage {
+                    let _ = storage.save(self.store.clone());
+                }
+                
+                self.new_service.clear();
+                self.new_user.clear();
+                self.new_password.clear();
+                self.selected_service = None;
+            }
+            Message::DeleteService(id) => {
+                self.store.entries.remove(id);
+                if let Some(storage) = &self.storage {
+                    let _ = storage.save(self.store.clone());
+                }
+                self.selected_service = None;
+            }
+            Message::CopyPassword(password) => {
+                return clipboard::write(password);
+            }
+            Message::CancelEdit => {
+                self.new_service.clear();
+                self.new_user.clear();
+                self.new_password.clear();
+                self.selected_service = None;
+            }
+            Message::LengthChanged(new_len) => {
+                self.password_length = new_len;
+            }
         }
+        Task::none()
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
         if self.storage.is_none() {
             self.view_login()
         } else {
@@ -102,7 +171,7 @@ impl PasswordManagerApp {
         }
     }
 
-    fn view_login(&self) -> Element<Message> {
+    fn view_login(&self) -> Element<'_, Message> {
         let title = text("SECURE VAULT").size(82).font(Font::MONOSPACE);
 
         let subtitle = text("Unlock your encrypted credentials").size(22);
@@ -166,10 +235,95 @@ impl PasswordManagerApp {
             .into()
     }
 
-    fn view_dashboard(&self) -> Element<Message> {
-        text("Hello world!").into()
+    fn view_dashboard(&self) -> Element<'_, Message> {
+    
+        let sidebar = container(
+            column![
+                text("VAULT").size(24).font(Font::MONOSPACE),
+                text_input("Search...", &self.search_query)
+                    .on_input(Message::SearchChanged)
+                    .padding(12),
+                scrollable(
+                    column(
+                        self.store.entries.iter().enumerate()
+                            .filter(|(_, e)| e.service.to_lowercase().contains(&self.search_query.to_lowercase()))
+                            .map(|(i, e)| {
+                                button(text(&e.service))
+                                    .on_press(Message::SelectService(i))
+                                    .width(Fill)
+                                    .padding(10)
+                                    .into()
+                            }).collect::<Vec<_>>()
+                    ).spacing(8)
+                ).height(Fill)
+            ].spacing(20)
+        )
+        .width(280)
+        .padding(20);
+
+        let details_area = container(
+        if let Some(id) = self.selected_service {
+            let e = &self.store.entries[id];
+            column![
+                text(&e.service).size(50).font(Font::MONOSPACE),
+                column![
+                    text("Username").size(16),
+                    text(&e.username).size(24).font(Font::MONOSPACE),
+                ].spacing(5).align_x(Alignment::Center),
+                column![
+                    text("Password").size(16),
+                    row![
+                        text(if self.is_password_visible { &e.password } else { "********" })
+                            .size(24).font(Font::MONOSPACE),
+                        button(text(if self.is_password_visible { "Hide" } else { "Show" }))
+                            .on_press(Message::ToggleVisibility).style(button::secondary),
+                        button("Copy").on_press(Message::CopyPassword(e.password.clone())),
+                    ].spacing(15).align_y(Alignment::Center),
+                ].spacing(5).align_x(Alignment::Center),
+                button("Delete Service")
+                    .on_press(Message::DeleteService(id))
+                    .style(button::danger)
+                    .padding([10, 20]),
+            ]
+            .spacing(30)
+            .align_x(Alignment::Center)
+        } else {
+            column![text("Select a service to view details").size(32)]
+        }
+    )
+    .width(Fill)
+    .height(Fill)
+    .center_x(Fill)
+    .center_y(Fill);
+
+        let add_form = container(
+        column![
+            text(if self.selected_service.is_some() { "EDIT ENTRY" } else { "NEW ENTRY" }).size(14),
+            row![
+                text_input("Service", &self.new_service).on_input(Message::NewServiceChanged),
+                text_input("Username", &self.new_user).on_input(Message::NewUserChanged),
+            ].spacing(10),
+            row![
+                text_input("Password", &self.new_password).on_input(Message::NewPasswordChanged),
+                row![
+                    iced::widget::slider(8..=64, self.password_length, Message::LengthChanged).width(150),
+                    text(format!("{}", self.password_length)).size(18).width(30),
+                ].spacing(10).align_y(Alignment::Center),
+                button("Gen").on_press(Message::GenerateNewPassword(self.password_length as usize)),
+            ].spacing(10).align_y(Alignment::Center),
+            row![
+                button(if self.selected_service.is_some() { "Update" } else { "Save" })
+                    .on_press(Message::SaveEntry).width(Fill),
+                button("Cancel").on_press(Message::CancelEdit).style(button::secondary),
+            ].spacing(10)
+        ].spacing(15)
+    )
+    .padding(20);
+
+        row![sidebar, column![details_area, add_form]].into()
     }
 }
+
 
 fn main() -> iced::Result {
     iced::application(
@@ -181,57 +335,3 @@ fn main() -> iced::Result {
     .theme(|app: &PasswordManagerApp| app.theme.clone())
     .run()
 }
-
-/*
-    print!("\nEnter the master password : ");
-    io::stdout().flush().expect("Failed to flush");
-    let master_password = rpassword::read_password().expect("Failed to read master password");
-    let crypto = CryptoManager::new(&master_password);
-    let storage = Storage{cyrpto: crypto};
-
-    match cli.command{
-        Commands::Add { service, username } => {
-            print!("\nEnter the password you want to add : ");
-            io::stdout().flush().expect("Failde to flush");
-            let password = rpassword::read_password().expect("Faile to read password");
-            let mut store = storage.load();
-            let new_entry = PasswordEntry{service: service, username: username, password: password};
-            store.entries.push(new_entry);
-            storage.save(store);
-            println!("\nService added successfully !\n")
-        },
-        Commands::Get { service } => {
-            let store = storage.load();
-            let target = store.entries.iter().find(|&s| s.service == service);
-            if let Some(entry) = target {
-                println!("\nService: {:?}", entry.service);
-                println!("Username: {:?}", entry.username);
-                println!("Password: {:?}\n", entry.password);
-            } else {
-                println!("\nServices not registered !\n")
-            }
-        }
-        Commands::List => {
-            let store = storage.load();
-            if store.entries.is_empty() {
-                println!("\nYou have 0 services :(\n");
-            } else {
-                for entry in store.entries {
-                    println!("\nService: {:?}", entry.service);
-                    println!("Username: {:?}", entry.username);
-                    println!("Password: {:?}\n", entry.password);
-                }
-            }
-        }
-        Commands::Delete { service } => {
-            let mut store = storage.load();
-            store.entries.retain(|s| s.service != service);
-            storage.save(store);
-            println!("\nService deleted successfully !")
-        }
-        Commands::Generate { length } => {
-            let password = storage.generate_password(length);
-            println!("Your generated password: {}", password);
-        }
-    };
-*/
